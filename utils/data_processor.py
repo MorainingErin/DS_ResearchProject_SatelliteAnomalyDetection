@@ -164,6 +164,9 @@ class DataPreProcessor:
             ), axis=1
         )
 
+        # Sort the DataFrame by end_timestamp in ascending order
+        manoeuvre = manoeuvre.sort_values(by='end_timestamp', ascending=True)
+
         # Keep only the timestamps for ground truth
         self.proc_manoeuvre = manoeuvre[["start_timestamp", "end_timestamp", "median_timestamp"]].copy()
         return self.proc_manoeuvre

@@ -3,13 +3,10 @@ import os
 from pathlib import Path
 
 
-
-
-
 def get_args():
     parser = argparse.ArgumentParser(description="Process some integers.")
 
-    parser.add_argument("--mode", type=str, choices=["preprocess", "analysis", "train", "test"], 
+    parser.add_argument("--mode", type=str, choices=["preprocess", "analysis", "train", "test", "evaluate"], 
                         default="analysis",
                         help="Mode of operation: preprocess, analysis, train or test")
 
@@ -19,7 +16,7 @@ def get_args():
     parser.add_argument("--output_dir", type=Path, default=Path("./output"),
                         help="Directory to save the processed data")
     
-    parser.add_argument("--satellite_name", type=str, default="Fengyun-2F",
+    parser.add_argument("--satellite_name", type=str, default="FENGYUN-2F",
                         help="Name of the satellite to process")
     
     # parser.add_argument("--element", type=str,

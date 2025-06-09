@@ -1,5 +1,6 @@
 from utils.dataloader import DataLoader
-from models.models import ARIMARunner, XGBoostRunner
+from models.models import ARIMARunner, XGBoostRunner, LSTMRunner
+import torch
 from tqdm import tqdm
 import warnings
 from statsmodels.tools.sm_exceptions import ConvergenceWarning
@@ -54,26 +55,26 @@ def train(data_dir, output_dir, satellite_name, verbose):
         all_data = dataloader.get_all_data(element)
         (model_out_path / element).mkdir(parents=True, exist_ok=True)
 
-        # ARIMA Model Grid Search
-        arima_param_grid = [
-            {
-                "model_folder": model_out_path / element,
-                "verbose": verbose,
-                "order": (p, d, q)
-            } 
-            for p in range(0, 6) 
-            for d in range(0, 3) 
-            for q in range(0, 6)
-        ]
-        best_arima_score, best_arima_runner = grid_search(
-            model_class=ARIMARunner,
-            param_grid=arima_param_grid,
-            train_data=None,
-            test_data=all_data
-        )
-        best_arima_runner.set_model_name(f"arima-best.pkl")
-        best_arima_runner.save_model()
-        print(f"Best ARIMA params for {element}: {best_arima_runner.param_str()} with an AIC of {best_arima_score}")
+        # # ARIMA Model Grid Search
+        # arima_param_grid = [
+        #     {
+        #         "model_folder": model_out_path / element,
+        #         "verbose": verbose,
+        #         "order": (p, d, q)
+        #     } 
+        #     for p in range(0, 6) 
+        #     for d in range(0, 3) 
+        #     for q in range(0, 6)
+        # ]
+        # best_arima_score, best_arima_runner = grid_search(
+        #     model_class=ARIMARunner,
+        #     param_grid=arima_param_grid,
+        #     train_data=None,
+        #     test_data=all_data
+        # )
+        # best_arima_runner.set_model_name(f"arima-best.pkl")
+        # best_arima_runner.save_model()
+        # print(f"Best ARIMA params for {element}: {best_arima_runner.param_str()} with an AIC of {best_arima_score}")
 
         # # Get the prediction across the whole dataset
         # _, all_predictions = best_arima_runner.predict(all_data)
@@ -97,40 +98,68 @@ def train(data_dir, output_dir, satellite_name, verbose):
         # arima_evaluator.plot_precision_recall_curve()
 
 
-        # XGBoost Model Grid Search
-        xgb_param_grid = [
-            {
-                "model_folder": model_out_path / element,
-                "verbose": verbose,
-                "window": w,
-                "n_estimators": n, 
-                "max_depth": d,
-                "learning_rate": lr,
-            }
-            for w in [3, 5, 10, 20]
-            for n in [10, 50, 100, 200]
-            for d in [3, 5, 7]
-            for lr in [0.01, 0.05, 0.1, 0.2]
-        ]
-        best_xgb_score, best_xgb_runner = grid_search(
-            model_class=XGBoostRunner,
-            param_grid=xgb_param_grid,
-            train_data=train_data,
-            test_data=test_data
-        )
-        best_xgb_runner.set_model_name(f"xgboost-best.pkl")
-        best_xgb_runner.save_model()
-        print(f"Best XGBoost params for {element}: {best_xgb_runner.param_str()} with a score of {best_xgb_score}")
+        # # XGBoost Model Grid Search
+        # xgb_param_grid = [
+        #     {
+        #         "model_folder": model_out_path / element,
+        #         "verbose": verbose,
+        #         "window": w,
+        #         "n_estimators": n, 
+        #         "max_depth": d,
+        #         "learning_rate": lr,
+        #     }
+        #     for w in [3, 5, 10, 20]
+        #     for n in [10, 50, 100, 200]
+        #     for d in [3, 5, 7]
+        #     for lr in [0.01, 0.05, 0.1, 0.2]
+        # ]
+        # best_xgb_score, best_xgb_runner = grid_search(
+        #     model_class=XGBoostRunner,
+        #     param_grid=xgb_param_grid,
+        #     train_data=train_data,
+        #     test_data=test_data
+        # )
+        # best_xgb_runner.set_model_name(f"xgboost-best.pkl")
+        # best_xgb_runner.save_model()
+        # print(f"Best XGBoost params for {element}: {best_xgb_runner.param_str()} with a score of {best_xgb_score}")
 
         # # Retrain the best XGBoost model and test it
         # best_xgb_runner.train(all_data)
         # all_predictions = best_xgb_runner.predict(all_data)
-        # # print(f"Test predictions for {element} with the best model: {test_predictions}")
+        # print(f"Test predictions for {element} with the best model: {test_predictions}")
 
         # visualizer = Visualizer("XGBoost", timestamps, all_data, all_predictions, 
         #                         manoeuvres, best_xgb_params, 
         #                         element, satellite_name, orbital_out_path)
         # visualizer.plot_predictions()
         # visualizer.plot_residuals_with_manoeuvres()
+
+
+        # Prepare data for LSTMRunner: expects DataFrame and target column name
+        # Here, all_data is assumed to be a pd.Series, so convert to DataFrame
+        lstm_param_grid = [
+            {
+                "model_folder": model_out_path / element,
+                "verbose": verbose,
+                "window": w,
+                "hidden_dim": h,
+                "num_layers": l,
+                "learning_rate": lr
+            }
+            for w in [5, 10, 20]
+            for h in [16, 32, 64]
+            for l in [1, 2]
+            for lr in [0.001, 0.003, 0.01, 0.03]
+        ]
+
+        best_lstm_score, best_lstm_runner = grid_search(
+            model_class=LSTMRunner,
+            param_grid=lstm_param_grid,
+            train_data=train_data,
+            test_data=test_data
+        )
+        best_lstm_runner.set_model_name(f"lstm-best.pkl")
+        best_lstm_runner.save_model()
+        print(f"Best LSTM params for {element}: {best_lstm_runner.param_str()} with a score of {best_lstm_score}")
 
     pass

@@ -27,7 +27,7 @@
                 "--mode", 
                 "analysis",
                 "--satellite_name",
-                "Fengyun-2F",
+                "CryoSat-2",
                 "--verbose"
             ]
         }

@@ -125,7 +125,7 @@ class XGBoostRunner(ModelRunner):
     
     def __repr__(self):
         return "\n".join([
-            f"Model name: ARIMA",
+            f"Model name: XGBoost",
             f"Saved path: {self.model_path}",
             "Params:",
             f"  window: {self.window}",
@@ -172,6 +172,21 @@ class XGBoostRunner(ModelRunner):
             "params": params
         }, to_path)
 
+    def difference_data(self, data, difference_order=1):
+        """
+        Apply differencing to the data to make it stationary.
+        
+        Parameters:
+            data (pd.Series): Series containing the orbital element data
+            difference_order (int): The order of differencing to apply
+        
+        Returns:
+            pd.Series: Differenced data
+        """
+        if difference_order > 0:
+            return data.diff(periods=difference_order).dropna()
+        return data
+
     def preprocess_data(self, data):
         """
         Convert a time-series column into a matrix X (features) and vector y (target values)
@@ -204,7 +219,8 @@ class XGBoostRunner(ModelRunner):
 
     def train(self, train_data):
 
-        X_train, y_train = self.preprocess_data(train_data)
+        diff_train_data = self.difference_data(train_data, difference_order=1)
+        X_train, y_train = self.preprocess_data(diff_train_data)
 
         if self.model is None:
             self.model = xgb.XGBRegressor(
@@ -222,67 +238,154 @@ class XGBoostRunner(ModelRunner):
         fitted_reverse = self.scaler.inverse_transform(fitted_values.reshape(-1, 1))
 
         # Calculate residuals
-        residuals = fitted_reverse - train_data[self.window:].values.reshape(-1, 1)
+        residuals = fitted_reverse - diff_train_data[self.window:].values.reshape(-1, 1)
         mse = np.square(np.mean(residuals))  # Mean Squared Error (MSE)
         
         return mse, fitted_reverse
 
     def predict(self, val_data):
 
-        X_val, y_val = self.preprocess_data(val_data)
+        diff_val_data = self.difference_data(val_data, difference_order=1)
+        X_val, y_val = self.preprocess_data(diff_val_data)
         val_predictions = self.model.predict(X_val)
 
         # Inverse transform the predictions to get them back to the original scale
         val_reverse = self.scaler.inverse_transform(val_predictions.reshape(-1, 1))
 
         # Calculate residuals
-        residuals = val_reverse - val_data[self.window:].values.reshape(-1, 1)
+        residuals = val_reverse - diff_val_data[self.window:].values.reshape(-1, 1)
         mse = np.square(np.mean(residuals))  # Mean Squared Error (MSE)
 
         return mse, val_reverse
 
 
+class LSTMModel(nn.Module):
+    def __init__(self, input_dim, hidden_dim, num_layers):
+        super().__init__()
+        self.lstm = nn.LSTM(input_dim, hidden_dim, num_layers, batch_first=True)
+        self.fc = nn.Linear(hidden_dim, 1)
+    
+    def forward(self, x):
+        lstm_out, _ = self.lstm(x)
+        return self.fc(lstm_out[:, -1, :])
+
+
 class LSTMRunner(ModelRunner):
-    def __init__(self, data, target_column, hidden_dim=50, num_layers=2):
-        super().__init__(data, target_column)
+    def __init__(self, model_folder, verbose, window=10, hidden_dim=50, num_layers=2, learning_rate=0.001):
+        super().__init__(model_folder, verbose)
+        self.window = window
         self.hidden_dim = hidden_dim
         self.num_layers = num_layers
+        self.scaler = StandardScaler()
         self.model = self.build_model()
         self.criterion = nn.MSELoss()
-        self.optimizer = optim.Adam(self.model.parameters(), lr=0.001)
-    
+        self.learning_rate =learning_rate
+        self.optimizer = optim.Adam(self.model.parameters(), lr=self.learning_rate)
+
+    def __repr__(self):
+        return "\n".join([
+            f"Model name: LSTM",
+            f"Saved path: {self.model_path}",
+            "Params:",
+            f"  window: {self.window}",
+            f"  hidden_dim: {self.hidden_dim}",
+            f"  num_layers: {self.num_layers}",
+            f"  learning_rate: {self.learning_rate}"
+        ])
+
+    def param_str(self):
+        return f"win{self.window}_hiddim{self.hidden_dim}_nlayer{self.num_layers}_lr{self.learning_rate}"
+
+    def set_model_name(self, model_name=None):
+        """None for default"""
+        if model_name is None:
+            para_str = self.param_str()
+            self.model_path = self.model_folder / f"lstm-{para_str}.pkl"
+        else:
+            self.model_path = self.model_folder / model_name
+        return self.model_path
+
+    def load_model(self):
+        if self.model_path.exists():
+            loaded_data = torch.load(self.model_path)
+            self.model = loaded_data["model"]
+            self.window = loaded_data["params"]["window"]
+            self.hidden_dim = loaded_data["params"]["hidden_dim"]
+            self.num_layers = loaded_data["params"]["num_layers"]
+            self.learning_rate = loaded_data["params"]["learning_rate"]
+            self.model = self.build_model()
+        else:
+            self.model = None
+
+    def save_model(self, to_path=None):
+        if to_path is None:
+            to_path = self.model_path
+        params = {
+            "window": self.window,
+            "hidden_dim": self.hidden_dim,
+            "num_layers": self.num_layers,
+            "learning_rate": self.learning_rate
+        }
+        torch.save({
+            "model": self.model,
+            "params": params
+        }, to_path)
+
     def build_model(self):
-        class LSTMModel(nn.Module):
-            def __init__(self, input_dim, hidden_dim, num_layers):
-                super().__init__()
-                self.lstm = nn.LSTM(input_dim, hidden_dim, num_layers, batch_first=True)
-                self.fc = nn.Linear(hidden_dim, 1)
-            
-            def forward(self, x):
-                lstm_out, _ = self.lstm(x)
-                return self.fc(lstm_out[:, -1, :])
-            
         return LSTMModel(input_dim=1, hidden_dim=self.hidden_dim, num_layers=self.num_layers)
-    
-    def train(self, epochs=20, batch_size=32):
-        X, y = self.preprocess_data()
+
+    def difference_data(self, data, difference_order=1):
+        """
+        Apply differencing to the data to make it stationary.
+        
+        Parameters:
+            data (pd.Series): Series containing the orbital element data
+            difference_order (int): The order of differencing to apply
+        
+        Returns:
+            pd.Series: Differenced data
+        """
+        if difference_order > 0:
+            return data.diff(periods=difference_order).dropna()
+        return data
+
+    def preprocess_data(self, data):
+        data = data.values.reshape(-1, 1)
+        data = self.scaler.fit_transform(data)
+        X = []
+        y = []
+        for i in range(len(data) - self.window):
+            X.append(data[i:i+self.window])
+            y.append(data[i+self.window])
+        X = np.array(X)
+        y = np.array(y)
+        return X, y
+
+    def train(self, train_data, epochs=50, batch_size=32):
+        diff_train_data = self.difference_data(train_data, difference_order=1)
+        X, y = self.preprocess_data(diff_train_data)
         dataset = TensorDataset(torch.tensor(X).float(), torch.tensor(y).float())
         dataloader = DataLoader(dataset, batch_size=batch_size, shuffle=True)
 
         for epoch in range(epochs):
             for batch_X, batch_y in dataloader:
                 self.optimizer.zero_grad()
-                y_pred = self.model(batch_X.unsqueeze(-1))
-                loss = self.criterion(y_pred, batch_y.unsqueeze(-1))
+                y_pred = self.model(batch_X)
+                loss = self.criterion(y_pred, batch_y)
                 loss.backward()
                 self.optimizer.step()
-    
-    def preprocess_data(self):
-        X = self.data[self.target_column].values.reshape(-1, 1)
-        scaler = StandardScaler()
-        X_scaled = scaler.fit_transform(X)
-        return X_scaled[:-1], X_scaled[1:]
-    
-    def predict(self, X_new):
-        X_tensor = torch.tensor(X_new).float().unsqueeze(-1)
-        return self.model(X_tensor).detach().numpy()
+
+    def predict(self, val_data):
+        diff_val_data = self.difference_data(val_data, difference_order=1)
+        X_val, y_val = self.preprocess_data(diff_val_data)
+        X_tensor = torch.tensor(X_val).float()
+        val_predictions = self.model(X_tensor).detach().numpy()
+
+        # Inverse transform the predictions to get them back to the original scale
+        val_reverse = self.scaler.inverse_transform(val_predictions)
+
+        # Calculate residuals
+        residuals = val_reverse - diff_val_data[self.window:].values.reshape(-1, 1)
+        mse = np.square(np.mean(residuals))  # Mean Squared Error (MSE)
+
+        return mse, val_reverse

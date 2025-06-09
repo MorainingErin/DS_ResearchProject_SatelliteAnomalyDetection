@@ -20,7 +20,6 @@ class Visualizer:
         
         self.param_str = param_str
         self.element = element
-        # self.window = self.actual_values.shape[0] - self.predicted_values.shape[0]
 
 
     def plot_residual_distributions(self):
@@ -88,20 +87,6 @@ class Visualizer:
         fig.savefig(self.out_path / f'{self.model_name}_residual{fig_suffix}.png')
         plt.close(fig)
 
-        # plt.figure(figsize=(12, 8))
-        # # # Plot training data
-        # plt.plot(self.timestamp[self.window:], self.actual_values[self.window:], label='Actual Values', color='blue', linewidth=2)
-        # plt.plot(self.timestamp[self.window:], self.predicted_values, label='Predicted Values', color='orange', linestyle='--', linewidth=2)
-
-        # # plt.title(f'{self.model_name} Predictions for {self.element} of {self.satellite_name}', fontsize=14)
-        # plt.title(f'{self.model_name} Predictions for {self.element} ({self.satellite_name})', fontsize=14)
-        # plt.xlabel('Timestamps', fontsize=12)
-        # plt.ylabel('Values', fontsize=12)
-        # plt.legend()
-        # plt.grid(True)
-        # plt.tight_layout()
-        # plt.savefig(self.orbital_out_path / f'{self.model_name}_predictions__{self.element} ({self.satellite_name}).png')
-
 
     def plot_violins(self, day_range=range(1, 2)):
         total_residuals = np.abs(self.actual_values - self.predicted_values)
@@ -147,40 +132,6 @@ class Visualizer:
         plt.close(fig)
 
 
-    # def plot_residuals_with_manoeuvres(self):
-    #     """
-    #     Plot the residuals (absolute difference between predicted and actual values)
-    #     for both training and test sets, and draw manoeuvres as vertical lines.
-    #     """
-    #     residuals = np.abs(self.predicted_values - self.actual_values[self.window: ])
-
-    #     plt.figure(figsize=(12, 8))
-    #     # Plot training residuals
-    #     plt.plot(self.timestamp[self.window:],
-    #              residuals, label='Residuals (Train)', color='blue', linewidth=2)
-
-    #     # Draw manoeuvres as vertical lines
-    #     for timestamp in self.manoeuvres["end_timestamp"]:
-    #         plt.axvline(
-    #         x=timestamp,
-    #         color="darkorange",
-    #         linestyle="--",
-    #         alpha=1.0,
-    #         label="Manoeuvre"
-    #         if "Manoeuvre" not in plt.gca().get_legend_handles_labels()[1]
-    #         else None,
-    #     )
-
-    #     # plt.title(f'{self.model_name} Residuals of {self.element} for {self.satellite_name}', fontsize=14)
-    #     plt.title(f'Residuals with Manoeuvres: {self.model_name} - {self.element} ({self.satellite_name})', fontsize=14)
-    #     plt.xlabel('Timestamps', fontsize=12)
-    #     plt.ylabel('Residuals', fontsize=12)
-    #     plt.legend()
-    #     plt.grid(True)
-    #     plt.tight_layout()
-    #     plt.savefig(self.orbital_out_path / f'{self.model_name}_residuals_{self.element} ({self.satellite_name}).png')
-
-
     def save_model_parameter(self, model_runner):
         with open(self.out_path / f"{self.model_name}_info.txt", "w") as f:
             f.write(str(model_runner))
@@ -190,14 +141,3 @@ class Visualizer:
     def compute_mae(self):
         residuals = np.abs(self.actual_values - self.predicted_values)
         return np.mean(residuals)
-
-
-    # def display_model_info(self):
-    #     """
-    #     Display the model name, hyperparameters, and satellite name.
-    #     """
-    #     print(f"Model Name: {self.model_name}")
-    #     print(f"Satellite Name: {self.satellite_name}")
-    #     print("Hyperparameters:")
-    #     for key, value in self.hyperparameters.items():
-    #         print(f"  {key}: {value}")

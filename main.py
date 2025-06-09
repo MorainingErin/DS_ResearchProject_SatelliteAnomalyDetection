@@ -19,7 +19,7 @@ def main():
         # Train the models
         train(args.data_dir, args.output_dir, args.satellite_name, args.verbose)
     
-    else:
+    elif args.mode == "test":
         test(args.data_dir, args.output_dir, args.satellite_name, args.verbose)
 
 
