@@ -1,9 +1,11 @@
 import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
+from sklearn.svm import OneClassSVM
+from sklearn.preprocessing import StandardScaler
 
 
-class Evaluator:
+class Classifier:
     def __init__(self, model_name, satellite_name, out_path,
                  timestamp, residuals, ground_truth_manoeuvers, matching_max_days=1):
 
@@ -17,6 +19,10 @@ class Evaluator:
         self.dict_predictions_to_ground_truth = {}
         self.dict_ground_truth_to_predictions = {}
 
+        self.svm_classifier = None
+        self.svm_scaler = None
+        self.svm_pred_labels = None
+        self.svm_pred_raw = None
         self.precision_recall_thresholds = []
 
     def convert_timestamp_series_to_epoch(self, series):
@@ -24,7 +30,31 @@ class Evaluator:
             (series - pd.Timestamp(year=1970, month=1, day=1)) // pd.Timedelta(seconds=1)
         ).values
 
-    def compute_simple_matching_precision_recall_for_one_threshold(self, threshold):
+    def classify_residuals_by_svm(self, n):
+
+        # Prepare features: residuals as 1D feature
+        X = self.residuals.values.reshape(-1, 1)
+
+        # Standardize features for SVM
+        scaler = StandardScaler()
+        X_scaled = scaler.fit_transform(X)
+
+        # Train One-Class SVM (unsupervised)
+        clf = OneClassSVM(kernel='rbf', nu=n, gamma='scale')  # nu can be tuned
+        clf.fit(X_scaled)
+
+        # Predict: -1 for anomaly, 1 for normal
+        y_pred = clf.predict(X_scaled)
+        # Convert to 1 for anomaly, 0 for normal for consistency
+        y_pred_bin = (y_pred == -1).astype(int)
+
+        # Store results for further analysis
+        self.svm_classifier = clf
+        self.svm_scaler = scaler
+        self.svm_pred_labels = y_pred_bin
+        self.svm_pred_raw = y_pred
+
+    def compute_simple_matching_precision_recall_for_one_threshold(self):
         self.dict_predictions_to_ground_truth = {}
         self.dict_ground_truth_to_predictions = {}
         
@@ -35,7 +65,7 @@ class Evaluator:
         predictions = self.residuals.to_numpy()
 
         for i in range(predictions.shape[0]):
-            if predictions[i] >= threshold:
+            if self.svm_pred_labels[i] == 1:
                 left_index = np.searchsorted(
                     manoeuvre_timestamps_seconds, pred_time_stamps_seconds[i]
                 )
@@ -63,7 +93,7 @@ class Evaluator:
                     else:
                         self.dict_ground_truth_to_predictions[index_of_closest] = [i]
 
-        positive_prediction_indices = np.argwhere(predictions >= threshold)[:, 0]
+        positive_prediction_indices = np.argwhere(self.svm_pred_labels == 1)[:, 0]
         list_false_positives = [
             pred_ind for pred_ind in positive_prediction_indices if pred_ind not in self.dict_predictions_to_ground_truth.keys()
         ]
@@ -75,62 +105,26 @@ class Evaluator:
         precision = len(self.dict_ground_truth_to_predictions) / (len(self.dict_ground_truth_to_predictions) + len(list_false_positives))
         recall = len(self.dict_ground_truth_to_predictions) / (len(self.dict_ground_truth_to_predictions) + len(list_false_negatives))
 
-        if precision >= 0.75 and recall >= 0.629:
-        # To export the intermediate results for debugging
-            labels = []
-            for i in range(len(predictions)):
-                if i in list_false_positives:
-                    labels.append("fp")
-                elif i in positive_prediction_indices:
-                    labels.append("tp")
-                else:
-                    labels.append("n")
-
-            df_predictions = pd.DataFrame({
-                "residual": self.residuals.values,
-                "label": labels
-            }, index=self.residuals.index)
-            df_predictions.to_csv(self.out_path / "prediction_results.csv")
-            print(f"Exported prediction results to {self.out_path / 'prediction_results.csv'}")
-
-            # To export manoeuvre timestamps for debugging
-            manoeuvre_labels = []
-            for idx in range(len(self.ground_truth_manoeuvers)):
-                if idx in self.dict_ground_truth_to_predictions:
-                    manoeuvre_labels.append("tp")
-                else:
-                    manoeuvre_labels.append("fn")
-
-            df_manoeuvres = pd.DataFrame({
-                "manoeuvre_timestamp": self.ground_truth_manoeuvers,
-                "label": manoeuvre_labels
-            })
-            df_manoeuvres.to_csv(self.out_path / "manoeuvre_results.csv", index=False)
-            print(f"Exported manoeuvre results to {self.out_path / 'manoeuvre_results.csv'}")
-
+        print("The precision is: ", precision)
+        print("The recall is: ", recall)
         return precision, recall
-    
 
-    def compute_all_precision_recall(self):
-        thresholds = np.sort(self.residuals.to_numpy())[:-10]
+    # def compute_all_precision_recall(self):
+    #     nus = [0.5, 0.4, 0.3, 0.2, 0.1, 0.05, 0.03, 0.01]
 
-        for threshold in thresholds:
-            precision, recall = self.compute_simple_matching_precision_recall_for_one_threshold(threshold)
-            print(f"Threshold: {threshold:.2f}, Precision: {precision:.4f}, Recall: {recall:.4f}")
-            self.precision_recall_thresholds.append((threshold, precision, recall))
+    #     for nu in nus:
+    #         precision, recall = self.compute_simple_matching_precision_recall_for_one_threshold()
+    #         self.precision_recall_thresholds.append((nu, precision, recall))
 
-        return self.precision_recall_thresholds
+    #     return self.precision_recall_thresholds
 
-    def plot_precision_recall_curve(self):
+    def plot_precision_recall_curve(self, precision_recalls):
         """
         Plot the precision-recall curve for different thresholds.
         """
-        precisions = [item[1] for item in self.precision_recall_thresholds]
-        recalls = [item[2] for item in self.precision_recall_thresholds]
-        # precisions, recalls, thresholds = precision_recall_curve(
-        #     [1 if any(abs((ts - manoeuver).total_seconds()/3600/24) <= self.tolerance_window for manoeuver in self.ground_truth_manoeuvers) else 0 for ts in self.timestamps],
-        #     self.residuals
-        # )
+        precisions = [item[1] for item in precision_recalls]
+        recalls = [item[2] for item in precision_recalls]
+
         plt.figure(figsize=(8, 6))
         plt.plot(recalls, precisions, marker='o', label="Precision-Recall Curve")
         plt.xlabel("Recall")

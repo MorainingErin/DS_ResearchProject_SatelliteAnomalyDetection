@@ -47,8 +47,9 @@ class DataLoader():
     
     def get_selected_elements(self):
         return [
-            self.readable_labels[x] 
-            for x in ("Brouwer mean motion", )  # , "eccentricity", "argument of perigee")
+            self.readable_labels[x]
+            for x in ("Brouwer mean motion", ) 
+            # for x in ("Brouwer mean motion", "eccentricity", "argument of perigee", "inclination", "right ascension", "mean anomaly")
         ]
     
     def get_all_timestamps(self):
