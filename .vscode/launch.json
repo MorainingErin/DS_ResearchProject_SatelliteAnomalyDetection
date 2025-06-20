@@ -59,6 +59,18 @@
         }
         ,
         {
+            "name": "Evaluate",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "${workspaceFolder}/main.py",
+            "console": "integratedTerminal",
+            "args": [
+                "--mode", 
+                "evaluate",
+                "--verbose"
+            ]
+        },
+        {
             "name": "Move files",
             "type": "debugpy",
             "request": "launch",

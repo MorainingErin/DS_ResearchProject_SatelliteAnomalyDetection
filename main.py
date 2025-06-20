@@ -2,6 +2,7 @@ from utils.config import get_args
 from utils import exploratory_analysis, preprocess_dataset
 from models.training import train
 from models.testing import test
+from models.evaluating import evaluate
 
 
 def main():
@@ -22,6 +23,8 @@ def main():
     elif args.mode == "test":
         test(args.data_dir, args.output_dir, args.satellite_name, args.verbose)
 
+    elif args.mode == "evaluate":
+        evaluate(args.data_dir, args.output_dir, args.satellite_name, args.verbose)
 
 if __name__ == "__main__":
     main()

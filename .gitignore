@@ -180,3 +180,4 @@ history/
 satellite_data/figures/
 satellite_data/proc_manoeuvres/
 test/
+utils/*.bk

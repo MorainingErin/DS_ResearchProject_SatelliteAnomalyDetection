@@ -16,7 +16,7 @@ def get_args():
     parser.add_argument("--output_dir", type=Path, default=Path("./output"),
                         help="Directory to save the processed data")
     
-    parser.add_argument("--satellite_name", type=str, default="FENGYUN-2F",
+    parser.add_argument("--satellite_name", type=str, default="CryoSat-2",
                         help="Name of the satellite to process")
     
     # parser.add_argument("--element", type=str,
